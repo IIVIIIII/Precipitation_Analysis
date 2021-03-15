@@ -1,5 +1,6 @@
 import numpy as np
 import sqlalchemy
+import datetime as dt
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
@@ -41,9 +42,38 @@ def welcome():
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0//api/v1.0/<start><br/>"
-        f"/api/v1.0/<start>/<end>"
+        f"/api/v1.0/*start*<br/>"
+        f"/api/v1.0/*start*/*end*"
     )
+
+
+
+@app.route("/api/v1.0/precipitation")
+def precipitation():
+    # Create our session (link) from Python to the DB
+    session = Session(engine)
+
+    """Return a list of precipitation data including the ammount and date it was measured"""
+    # Query all passengers
+
+    year_before = dt.datetime.strptime(session.query(measurement.date).order_by(measurement.date.desc()).first()[0], '%Y-%m-%d').date() - dt.timedelta(days=365)
+    that = session.query(measurement.station, func.count(measurement.station)).group_by(measurement.station).order_by(func.count(measurement.station).desc()).all()[0][0]
+
+    results = session.query(measurement.date, measurement.prcp).\
+        filter(measurement.date >= year_before).\
+        filter(measurement.station == that).all()
+
+    session.close()
+
+    # Create a dictionary from the row data and append to a list of precip_date
+    date_precip = []
+    for date, precip in results:
+        precipitation = {}
+        precipitation[date] = precip
+        date_precip.append(precipitation)
+
+    return jsonify(date_precip)
+
 
 
 @app.route("/api/v1.0/stations")
@@ -63,49 +93,64 @@ def names():
     return jsonify(all_stations)
 
 
+
 @app.route("/api/v1.0/tobs")
-def passengers():
+def tobs():
     # Create our session (link) from Python to the DB
     session = Session(engine)
 
-    """Return a list of precipitation data including the ammount and date it was measured"""
-    # Query all passengers
+    """Return a list of precipitation data from most active station in the most recent year avaliable including the ammount and date it was measured"""
 
+    # Query all relevant precipitation and dates
     year_before = dt.datetime.strptime(session.query(measurement.date).order_by(measurement.date.desc()).first()[0], '%Y-%m-%d').date() - dt.timedelta(days=365)
+    that = session.query(measurement.station, func.count(measurement.station)).group_by(measurement.station).order_by(func.count(measurement.station).desc()).all()[0][0]
 
     results = session.query(measurement.date, measurement.tobs).\
         filter(measurement.date >= year_before).\
-        filter(measurement.station == 'USC00519281').all()
+        filter(measurement.station == that).all()
 
     session.close()
 
-    # Create a dictionary from the row data and append to a list of all_passengers
-    # all_passengers = []
-    # for name, age, sex in results:
-    #     passenger_dict = {}
-    #     passenger_dict["name"] = name
-    #     passenger_dict["age"] = age
-    #     passenger_dict["sex"] = sex
-    #     all_passengers.append(passenger_dict)
+    return jsonify(list(results))
 
-    # return jsonify(all_passengers)
-    return jsonify(len(list(results)))
 
-ç
-# @app.route("/api/v1.0/justice-league/<real_name>")
-# def justice_league_character(real_name):
-#     """Fetch the Justice League character whose real_name matches
-#        the path variable supplied by the user, or a 404 if not."""
 
-#     canonicalized = real_name.replace(" ", "").lower()
-#     for character in justice_league_members:
-#         search_term = character["real_name"].replace(" ", "").lower()
+@app.route("/api/v1.0/<start>")
+def temp_sum_start(start):
+    # Create our session (link) from Python to the DB
+    session = Session(engine)
 
-#         if search_term == canonicalized:
-#             print(f'Found {character}')
-#             return jsonify(character)
+    """Get precipitation data since the date indicated"""
 
-#     return jsonify({"error": f"Character with real_name {real_name} not found."}), 404
+    start_date = start
+
+    results = session.query(func.max(measurement.tobs), func.min(measurement.tobs), func.avg(measurement.tobs)).\
+        filter(measurement.date >= start_date).all()
+
+    session.close()
+
+    return jsonify(list(np.ravel(results)))
+
+
+
+@app.route("/api/v1.0/<start>/<end>")
+def temp_sum_end(start, end):
+    # Create our session (link) from Python to the DB
+    session = Session(engine)
+
+    """Get precipitation within the time range of the dates indicated"""
+
+    start_date = start
+    end_date = end
+
+    results = session.query(func.max(measurement.tobs), func.min(measurement.tobs), func.avg(measurement.tobs)).\
+        filter(measurement.date >= start_date).\
+        filter(measurement.date <= end_date).all()
+
+    session.close()
+
+    return jsonify(list(np.ravel(results)))
+
 
 
 if __name__ == '__main__':
